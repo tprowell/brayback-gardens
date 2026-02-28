@@ -1,10 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { getGardens } from "@/actions/gardens";
+import { getActivePlantings } from "@/actions/plantings";
+import { getUpcomingHarvests } from "@/actions/harvests";
 import { FirstRunDialog } from "@/components/layout/first-run-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Leaf, Sprout, StickyNote, CheckSquare } from "lucide-react";
+import { PlantingStatusBadge } from "@/components/plantings/planting-status-badge";
+import { formatDateShort, daysUntil } from "@/lib/dates";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -12,7 +16,12 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const gardens = await getGardens();
+  const [gardens, activePlantings, upcomingHarvests] = await Promise.all([
+    getGardens(),
+    getActivePlantings(),
+    getUpcomingHarvests(),
+  ]);
+
   const showFirstRun = gardens.length === 0;
 
   const displayName =
@@ -93,6 +102,77 @@ export default async function DashboardPage() {
           </Card>
         </Link>
       </div>
+
+      {/* Active plantings */}
+      {activePlantings.length > 0 && (
+        <div>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Active Plantings</h2>
+            <Link href="/plantings">
+              <Button variant="ghost" size="sm">
+                View All
+              </Button>
+            </Link>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {activePlantings.slice(0, 6).map((p) => (
+              <Link key={p.id} href={`/plantings/${p.id}`}>
+                <Card className="transition-shadow hover:shadow-md">
+                  <CardContent className="flex items-center justify-between gap-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">
+                        {p.plant?.name ?? "Unknown"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {p.garden?.name}
+                      </p>
+                    </div>
+                    <PlantingStatusBadge status={p.status} />
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Upcoming harvests */}
+      {upcomingHarvests.length > 0 && (
+        <div>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Upcoming Harvests</h2>
+            <Link href="/harvests">
+              <Button variant="ghost" size="sm">
+                View All
+              </Button>
+            </Link>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {upcomingHarvests.slice(0, 4).map((p) => (
+              <Link key={p.id} href={`/plantings/${p.id}`}>
+                <Card className="transition-shadow hover:shadow-md">
+                  <CardContent className="flex items-center justify-between gap-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">
+                        {p.plant?.name ?? "Unknown"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {p.garden?.name}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right text-sm">
+                      <p>{formatDateShort(p.expected_harvest_at!)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {daysUntil(p.expected_harvest_at!)}d away
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Gardens */}
       {gardens.length > 0 && (

@@ -7,7 +7,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Sprout, StickyNote, CheckSquare } from "lucide-react";
+import { Sprout, Apple, StickyNote, CheckSquare } from "lucide-react";
 
 interface QuickActionDrawerProps {
   open: boolean;
@@ -16,10 +16,16 @@ interface QuickActionDrawerProps {
 
 const actions = [
   {
-    href: "/plantings",
+    href: "/plantings/new",
     label: "Log Planting",
     description: "Record a new planting",
     icon: Sprout,
+  },
+  {
+    href: "/harvests/new",
+    label: "Log Harvest",
+    description: "Record a harvest",
+    icon: Apple,
   },
   {
     href: "/notes",

@@ -53,6 +53,35 @@ export const PLANTING_STATUSES = [
   "done",
 ] as const;
 
+export type PlantingStatus = (typeof PLANTING_STATUSES)[number];
+
+export const PLANTING_STATUS_LABELS: Record<PlantingStatus, string> = {
+  planned: "Planned",
+  started: "Started Indoors",
+  transplanted: "Transplanted",
+  growing: "Growing",
+  harvesting: "Harvesting",
+  done: "Done",
+};
+
+export const PLANTING_STATUS_COLORS: Record<PlantingStatus, string> = {
+  planned: "bg-slate-100 text-slate-700",
+  started: "bg-violet-100 text-violet-700",
+  transplanted: "bg-sky-100 text-sky-700",
+  growing: "bg-green-100 text-green-700",
+  harvesting: "bg-amber-100 text-amber-700",
+  done: "bg-stone-100 text-stone-500",
+};
+
+export const PLANTING_STATUS_ORDER: PlantingStatus[] = [
+  "planned",
+  "started",
+  "transplanted",
+  "growing",
+  "harvesting",
+  "done",
+];
+
 export const TASK_STATUSES = ["todo", "done"] as const;
 
 // Laytonville, CA — approximate last frost date
