@@ -30,8 +30,13 @@ import {
   WATER_LABELS,
   PLANTING_METHODS,
 } from "@/lib/constants";
+import type { PlantDefaults } from "@/types/plant-search";
 
-export function PlantForm() {
+interface PlantFormProps {
+  defaults?: PlantDefaults;
+}
+
+export function PlantForm({ defaults }: PlantFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -64,18 +69,18 @@ export function PlantForm() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="name">Plant Name *</Label>
-              <Input id="name" name="name" required />
+              <Input id="name" name="name" required defaultValue={defaults?.name ?? ""} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="variety">Variety</Label>
-              <Input id="variety" name="variety" />
+              <Input id="variety" name="variety" defaultValue={defaults?.variety ?? ""} />
             </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="category">Category *</Label>
-              <Select name="category" required>
+              <Select name="category" required defaultValue={defaults?.category}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
@@ -90,7 +95,7 @@ export function PlantForm() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="sun_requirement">Sun</Label>
-              <Select name="sun_requirement" defaultValue="full_sun">
+              <Select name="sun_requirement" defaultValue={defaults?.sun_requirement ?? "full_sun"}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -105,7 +110,7 @@ export function PlantForm() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="water_need">Water</Label>
-              <Select name="water_need" defaultValue="moderate">
+              <Select name="water_need" defaultValue={defaults?.water_need ?? "moderate"}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -122,7 +127,7 @@ export function PlantForm() {
 
           <div className="space-y-2">
             <Label htmlFor="description">Description</Label>
-            <Textarea id="description" name="description" rows={2} />
+            <Textarea id="description" name="description" rows={2} defaultValue={defaults?.description ?? ""} />
           </div>
         </CardContent>
       </Card>
@@ -139,6 +144,7 @@ export function PlantForm() {
                 id="days_to_maturity_min"
                 name="days_to_maturity_min"
                 type="number"
+                defaultValue={defaults?.days_to_maturity_min ?? ""}
               />
             </div>
             <div className="space-y-2">
@@ -151,7 +157,7 @@ export function PlantForm() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="spacing_inches">Spacing (inches)</Label>
-              <Input id="spacing_inches" name="spacing_inches" type="number" />
+              <Input id="spacing_inches" name="spacing_inches" type="number" defaultValue={defaults?.spacing_inches ?? ""} />
             </div>
           </div>
 
@@ -264,7 +270,7 @@ export function PlantForm() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="notes">Additional Notes</Label>
-            <Textarea id="notes" name="notes" rows={2} />
+            <Textarea id="notes" name="notes" rows={2} defaultValue={defaults?.notes ?? ""} />
           </div>
         </CardContent>
       </Card>

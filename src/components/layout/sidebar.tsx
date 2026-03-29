@@ -11,10 +11,12 @@ import {
   CheckSquare,
   StickyNote,
   Trees,
+  Map,
 } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/gardens", label: "Gardens", icon: Map },
   { href: "/plants", label: "Plants", icon: Leaf },
   { href: "/plantings", label: "Plantings", icon: Sprout },
   { href: "/harvests", label: "Harvests", icon: Apple },

@@ -34,6 +34,7 @@ export type FeatureType =
   | "path"
   | "water"
   | "seating"
+  | "gate"
   | "other";
 
 export type PreserveMethod =
@@ -58,6 +59,7 @@ export interface Garden {
   description: string | null;
   width_ft: number | null;
   length_ft: number | null;
+  grid_size_ft: number;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -72,8 +74,23 @@ export interface GardenFeature {
   y: number;
   width: number;
   height: number;
+  rotation: number;
+  points: { x: number; y: number }[] | null;
+  properties: Record<string, unknown> | null;
+  is_fixture: boolean;
   notes: string | null;
   created_at: string;
+}
+
+export interface GardenPlant {
+  id: string;
+  feature_id: string;
+  plant_id: string;
+  grid_x: number;
+  grid_y: number;
+  quantity: number;
+  created_at: string;
+  plant?: Plant;
 }
 
 export interface Plant {
