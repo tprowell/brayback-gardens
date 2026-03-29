@@ -187,6 +187,88 @@ export async function seedBarnGarden() {
   return { data: garden as Garden };
 }
 
+export async function createGardenFeature(
+  gardenId: string,
+  feature: {
+    name: string;
+    feature_type: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotation?: number;
+    points?: { x: number; y: number }[] | null;
+    properties?: Record<string, unknown>;
+    is_fixture?: boolean;
+  }
+) {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("garden_features")
+    .insert({
+      garden_id: gardenId,
+      ...feature,
+      rotation: feature.rotation ?? 0,
+      properties: feature.properties ?? {},
+      is_fixture: feature.is_fixture ?? false,
+    })
+    .select()
+    .single();
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/gardens/${gardenId}/design`);
+  return { data: data as GardenFeature };
+}
+
+export async function updateGardenFeature(
+  id: string,
+  updates: Partial<
+    Pick<
+      GardenFeature,
+      "x" | "y" | "width" | "height" | "rotation" | "name" | "properties" | "points"
+    >
+  >
+) {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("garden_features")
+    .update(updates)
+    .eq("id", id)
+    .select("garden_id")
+    .single();
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/gardens/${(data as { garden_id: string }).garden_id}/design`);
+  return { success: true };
+}
+
+export async function deleteGardenFeature(id: string) {
+  const supabase = await createClient();
+
+  const { data: feature } = await supabase
+    .from("garden_features")
+    .select("garden_id")
+    .eq("id", id)
+    .single();
+
+  const { error } = await supabase
+    .from("garden_features")
+    .delete()
+    .eq("id", id);
+
+  if (error) return { error: error.message };
+
+  if (feature)
+    revalidatePath(
+      `/gardens/${(feature as { garden_id: string }).garden_id}/design`
+    );
+  return { success: true };
+}
+
 export async function createDefaultGardens() {
   const supabase = await createClient();
 
