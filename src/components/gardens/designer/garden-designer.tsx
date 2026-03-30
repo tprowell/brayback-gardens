@@ -14,15 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  ZoomIn,
-  ZoomOut,
-  Maximize,
-  MousePointer2,
-  Trash2,
-  Pencil,
-  Droplets,
-} from "lucide-react";
+import { MousePointer2, Trash2, Pencil, Droplets, X } from "lucide-react";
 import { BedConfigDialog, type BedConfig } from "./bed-config-dialog";
 
 // ---------------------------------------------------------------------------
@@ -58,7 +50,6 @@ interface Segment {
 // ---------------------------------------------------------------------------
 
 const PADDING = 5;
-const ZOOM_FACTOR = 1.2;
 const BED_FILL = "#c4a882";
 const BED_STROKE = "#8b6914";
 const PATH_STROKE = "#d6c9a4";
@@ -131,42 +122,33 @@ export function GardenDesigner({ garden, features }: Props) {
   const gardenH = garden.width_ft || 45;
   const gridSize = garden.grid_size_ft || 2;
 
-  const defaultVB = {
-    x: -PADDING,
-    y: -PADDING,
-    width: gardenL + PADDING * 2,
-    height: gardenH + PADDING * 2,
-  };
+  const viewBox = `${-PADDING} ${-PADDING} ${gardenL + PADDING * 2} ${gardenH + PADDING * 2}`;
 
   // ---- State ----
   const [localFeatures, setLocalFeatures] =
     useState<GardenFeature[]>(features);
-  const [vb, setVB] = useState(defaultVB);
   const [mode, setMode] = useState<ToolMode>({ type: "select" });
   const [ghostPos, setGhostPos] = useState<{ x: number; y: number } | null>(
     null
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
-  const panRef = useRef({ x: 0, y: 0, vbX: 0, vbY: 0 });
   const dragRef = useRef({
     offsetX: 0,
     offsetY: 0,
     moved: false,
   });
 
-  // ---- Effects ----
+  // ---- Derived ----
 
-  // Prevent default wheel
-  useEffect(() => {
-    const el = svgRef.current;
-    if (!el) return;
-    const prevent = (e: WheelEvent) => e.preventDefault();
-    el.addEventListener("wheel", prevent, { passive: false });
-    return () => el.removeEventListener("wheel", prevent);
-  }, []);
+  const selectedFeature = selectedId
+    ? localFeatures.find((f) => f.id === selectedId) ?? null
+    : null;
+  const showPanel =
+    selectedFeature && !selectedFeature.is_fixture && mode.type === "select";
+
+  // ---- Effects ----
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -196,12 +178,16 @@ export function GardenDesigner({ garden, features }: Props) {
       const svg = svgRef.current;
       if (!svg) return { x: 0, y: 0 };
       const rect = svg.getBoundingClientRect();
+      const vbX = -PADDING;
+      const vbY = -PADDING;
+      const vbW = gardenL + PADDING * 2;
+      const vbH = gardenH + PADDING * 2;
       return {
-        x: vb.x + ((e.clientX - rect.left) / rect.width) * vb.width,
-        y: vb.y + ((e.clientY - rect.top) / rect.height) * vb.height,
+        x: vbX + ((e.clientX - rect.left) / rect.width) * vbW,
+        y: vbY + ((e.clientY - rect.top) / rect.height) * vbH,
       };
     },
-    [vb]
+    [gardenL, gardenH]
   );
 
   // ---- Feature CRUD ----
@@ -210,7 +196,6 @@ export function GardenDesigner({ garden, features }: Props) {
     if (mode.type !== "place-bed") return;
     const { shape, width: bw, depth: bd, name: bname } = mode;
 
-    // Center the bed on the click position, snapped
     const cx = snap(svgX, gridSize);
     const cy = snap(svgY, gridSize);
     const specX = cx - bw / 2;
@@ -383,13 +368,11 @@ export function GardenDesigner({ garden, features }: Props) {
         return;
       }
 
-      // Select mode — clicked on empty area → pan
+      // Select mode — clicked on empty area → deselect
       setSelectedId(null);
-      setIsPanning(true);
-      panRef.current = { x: e.clientX, y: e.clientY, vbX: vb.x, vbY: vb.y };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mode, mouseToSvg, gridSize, gardenH, vb.x, vb.y]
+    [mode, mouseToSvg, gridSize, gardenH]
   );
 
   const handleFeatureMouseDown = useCallback(
@@ -419,7 +402,11 @@ export function GardenDesigner({ garden, features }: Props) {
   const handleSvgMouseMove = useCallback(
     (e: React.MouseEvent) => {
       // Ghost preview for placement / path modes
-      if (mode.type === "place-bed" || mode.type === "draw-path" || mode.type === "place-spigot") {
+      if (
+        mode.type === "place-bed" ||
+        mode.type === "draw-path" ||
+        mode.type === "place-spigot"
+      ) {
         const pos = mouseToSvg(e);
         setGhostPos({ x: snap(pos.x, gridSize), y: snap(pos.y, gridSize) });
         return;
@@ -445,24 +432,8 @@ export function GardenDesigner({ garden, features }: Props) {
         dragRef.current.moved = true;
         return;
       }
-
-      // Panning
-      if (isPanning) {
-        const svg = svgRef.current;
-        if (!svg) return;
-        const rect = svg.getBoundingClientRect();
-        const dx =
-          ((e.clientX - panRef.current.x) / rect.width) * vb.width;
-        const dy =
-          ((e.clientY - panRef.current.y) / rect.height) * vb.height;
-        setVB((prev) => ({
-          ...prev,
-          x: panRef.current.vbX - dx,
-          y: panRef.current.vbY - dy,
-        }));
-      }
     },
-    [mode.type, mouseToSvg, gridSize, isDragging, selectedId, isPanning, gardenH, vb.width, vb.height]
+    [mode.type, mouseToSvg, gridSize, isDragging, selectedId, gardenH]
   );
 
   const handleSvgMouseUp = useCallback(() => {
@@ -473,11 +444,10 @@ export function GardenDesigner({ garden, features }: Props) {
       }
     }
     setIsDragging(false);
-    setIsPanning(false);
   }, [isDragging, selectedId, localFeatures]);
 
   const handleSvgDoubleClick = useCallback(
-    (e: React.MouseEvent) => {
+    () => {
       if (mode.type === "draw-path" && mode.points.length >= 2) {
         finishPath(mode.points, mode.width);
         setMode({ type: "select" });
@@ -487,59 +457,6 @@ export function GardenDesigner({ garden, features }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [mode]
   );
-
-  const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
-      const svg = svgRef.current;
-      if (!svg) return;
-      const rect = svg.getBoundingClientRect();
-      const mx = vb.x + ((e.clientX - rect.left) / rect.width) * vb.width;
-      const my = vb.y + ((e.clientY - rect.top) / rect.height) * vb.height;
-      const factor = e.deltaY > 0 ? ZOOM_FACTOR : 1 / ZOOM_FACTOR;
-      setVB((prev) => {
-        const nw = prev.width * factor;
-        const maxW = (gardenL + PADDING * 2) * 3;
-        const minW = (gardenL + PADDING * 2) / 10;
-        if (nw < minW || nw > maxW) return prev;
-        return {
-          x: mx - (mx - prev.x) * factor,
-          y: my - (my - prev.y) * factor,
-          width: nw,
-          height: prev.height * factor,
-        };
-      });
-    },
-    [vb, gardenL]
-  );
-
-  // ---- Zoom controls ----
-
-  const zoomIn = () =>
-    setVB((prev) => {
-      const cx = prev.x + prev.width / 2;
-      const cy = prev.y + prev.height / 2;
-      const f = 1 / ZOOM_FACTOR;
-      return {
-        x: cx - (prev.width * f) / 2,
-        y: cy - (prev.height * f) / 2,
-        width: prev.width * f,
-        height: prev.height * f,
-      };
-    });
-
-  const zoomOut = () =>
-    setVB((prev) => {
-      const cx = prev.x + prev.width / 2;
-      const cy = prev.y + prev.height / 2;
-      return {
-        x: cx - (prev.width * ZOOM_FACTOR) / 2,
-        y: cy - (prev.height * ZOOM_FACTOR) / 2,
-        width: prev.width * ZOOM_FACTOR,
-        height: prev.height * ZOOM_FACTOR,
-      };
-    });
-
-  const fitToScreen = () => setVB(defaultVB);
 
   // ---- Tool actions ----
 
@@ -574,12 +491,11 @@ export function GardenDesigner({ garden, features }: Props) {
   const hLines: number[] = [];
   for (let y = 0; y <= gardenH; y += gridSize) hLines.push(y);
 
-  const cursor =
-    mode.type === "place-bed" || mode.type === "draw-path" || mode.type === "place-spigot"
-      ? "crosshair"
-      : isPanning
-        ? "grabbing"
-        : "grab";
+  const isPlacing =
+    mode.type === "place-bed" ||
+    mode.type === "draw-path" ||
+    mode.type === "place-spigot";
+  const cursor = isPlacing ? "crosshair" : "default";
 
   // ---- Render helpers ----
 
@@ -602,7 +518,11 @@ export function GardenDesigner({ garden, features }: Props) {
               ? undefined
               : (e: React.MouseEvent) => handleFeatureMouseDown(e, f)
           }
-          style={!isGhost && mode.type === "select" ? { cursor: "move" } : undefined}
+          style={
+            !isGhost && mode.type === "select"
+              ? { cursor: "move" }
+              : undefined
+          }
         >
           <ellipse
             cx={f.x + f.width / 2}
@@ -639,7 +559,11 @@ export function GardenDesigner({ garden, features }: Props) {
             ? undefined
             : (e: React.MouseEvent) => handleFeatureMouseDown(e, f)
         }
-        style={!isGhost && mode.type === "select" ? { cursor: "move" } : undefined}
+        style={
+          !isGhost && mode.type === "select"
+            ? { cursor: "move" }
+            : undefined
+        }
       >
         <rect
           x={f.x}
@@ -669,10 +593,11 @@ export function GardenDesigner({ garden, features }: Props) {
     );
   }
 
-  function renderPath(f: GardenFeature, isPreview = false) {
+  function renderPath(f: GardenFeature) {
     const pts = f.points;
     if (!pts || pts.length < 2) return null;
-    const w = ((f.properties as Record<string, unknown>)?.width as number) || 3;
+    const w =
+      ((f.properties as Record<string, unknown>)?.width as number) || 3;
     return (
       <polyline
         key={f.id}
@@ -684,16 +609,12 @@ export function GardenDesigner({ garden, features }: Props) {
         strokeWidth={w}
         strokeLinecap="round"
         strokeLinejoin="round"
-        opacity={isPreview ? 0.5 : 0.8}
-        onMouseDown={
-          isPreview
-            ? undefined
-            : (e: React.MouseEvent) => {
-                if (mode.type !== "select") return;
-                e.stopPropagation();
-                setSelectedId(f.id);
-              }
-        }
+        opacity={0.8}
+        onMouseDown={(e: React.MouseEvent) => {
+          if (mode.type !== "select") return;
+          e.stopPropagation();
+          setSelectedId(f.id);
+        }}
         style={mode.type === "select" ? { cursor: "pointer" } : undefined}
       />
     );
@@ -711,7 +632,11 @@ export function GardenDesigner({ garden, features }: Props) {
             ? undefined
             : (e: React.MouseEvent) => handleFeatureMouseDown(e, f)
         }
-        style={!isGhost && mode.type === "select" ? { cursor: "move" } : undefined}
+        style={
+          !isGhost && mode.type === "select"
+            ? { cursor: "move" }
+            : undefined
+        }
       >
         <circle
           cx={f.x}
@@ -769,9 +694,7 @@ export function GardenDesigner({ garden, features }: Props) {
             x: p.x,
             svgY: toSvgY(p.y, gardenH),
           })),
-          ...(ghostPos
-            ? [{ x: ghostPos.x, svgY: ghostPos.y }]
-            : []),
+          ...(ghostPos ? [{ x: ghostPos.x, svgY: ghostPos.y }] : []),
         ]
       : null;
 
@@ -853,144 +776,144 @@ export function GardenDesigner({ garden, features }: Props) {
             Delete
           </Button>
         )}
-
-        {/* Zoom controls */}
-        <div className="ml-auto flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-7 w-7"
-            onClick={zoomIn}
-            title="Zoom in"
-          >
-            <ZoomIn className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-7 w-7"
-            onClick={zoomOut}
-            title="Zoom out"
-          >
-            <ZoomOut className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-7 w-7"
-            onClick={fitToScreen}
-            title="Fit to screen"
-          >
-            <Maximize className="h-3.5 w-3.5" />
-          </Button>
-        </div>
       </div>
 
-      {/* Canvas */}
-      <div className="flex-1 relative overflow-hidden bg-stone-100 dark:bg-stone-900">
-        <svg
-          ref={svgRef}
-          className="absolute inset-0 w-full h-full select-none"
-          style={{ cursor }}
-          viewBox={`${vb.x} ${vb.y} ${vb.width} ${vb.height}`}
-          preserveAspectRatio="xMidYMid meet"
-          onMouseDown={handleSvgMouseDown}
-          onMouseMove={handleSvgMouseMove}
-          onMouseUp={handleSvgMouseUp}
-          onMouseLeave={handleSvgMouseUp}
-          onDoubleClick={handleSvgDoubleClick}
-          onWheel={handleWheel}
-        >
-          {/* Garden fill */}
-          <rect
-            x={0}
-            y={0}
-            width={gardenL}
-            height={gardenH}
-            fill="#f0fdf0"
-            className="dark:fill-[#0a1f0a]"
-          />
+      {/* Canvas + Side panel */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Canvas */}
+        <div className="flex-1 relative bg-stone-100 dark:bg-stone-900">
+          <svg
+            ref={svgRef}
+            className="absolute inset-0 w-full h-full select-none"
+            style={{ cursor }}
+            viewBox={viewBox}
+            preserveAspectRatio="xMidYMid meet"
+            onMouseDown={handleSvgMouseDown}
+            onMouseMove={handleSvgMouseMove}
+            onMouseUp={handleSvgMouseUp}
+            onMouseLeave={handleSvgMouseUp}
+            onDoubleClick={handleSvgDoubleClick}
+          >
+            {/* Garden fill */}
+            <rect
+              x={0}
+              y={0}
+              width={gardenL}
+              height={gardenH}
+              fill="#f0fdf0"
+              className="dark:fill-[#0a1f0a]"
+            />
 
-          {/* Grid */}
-          <g opacity={0.25} stroke="#a3a3a3" strokeWidth={0.08}>
-            {vLines.map((x) => (
-              <line key={`v${x}`} x1={x} y1={0} x2={x} y2={gardenH} />
-            ))}
-            {hLines.map((y) => (
-              <line key={`h${y}`} x1={0} y1={y} x2={gardenL} y2={y} />
-            ))}
-          </g>
+            {/* Grid */}
+            <g opacity={0.25} stroke="#a3a3a3" strokeWidth={0.08}>
+              {vLines.map((x) => (
+                <line key={`v${x}`} x1={x} y1={0} x2={x} y2={gardenH} />
+              ))}
+              {hLines.map((y) => (
+                <line key={`h${y}`} x1={0} y1={y} x2={gardenL} y2={y} />
+              ))}
+            </g>
 
-          {/* Boundary */}
-          <g stroke="#78350f" strokeWidth={0.35} strokeLinecap="round">
-            {boundarySegments.map((s, i) => (
-              <line key={i} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} />
-            ))}
-          </g>
+            {/* Boundary */}
+            <g stroke="#78350f" strokeWidth={0.35} strokeLinecap="round">
+              {boundarySegments.map((s, i) => (
+                <line key={i} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} />
+              ))}
+            </g>
 
-          {/* Gates */}
-          {gates.map((gate) => {
-            const props = gate.properties as Record<string, unknown> | null;
-            const edge = props?.edge;
-            if (edge === "bottom") {
-              return (
-                <g key={gate.id}>
-                  <line
-                    x1={gate.x}
-                    y1={gardenH}
-                    x2={gate.x + gate.width}
-                    y2={gardenH}
-                    stroke="#78350f"
-                    strokeWidth={0.2}
-                    strokeDasharray="0.5 0.4"
-                    opacity={0.5}
-                  />
-                  <text
-                    x={gate.x + gate.width / 2}
-                    y={gardenH + 1.8}
-                    textAnchor="middle"
-                    fontSize={1.1}
-                    fill="#78350f"
-                  >
-                    {gate.name}
-                  </text>
-                </g>
-              );
-            }
-            if (edge === "right") {
-              const top = toSvgY(gate.y + gate.height, gardenH);
-              const bot = toSvgY(gate.y, gardenH);
-              return (
-                <g key={gate.id}>
-                  <line
-                    x1={gardenL}
-                    y1={top}
-                    x2={gardenL}
-                    y2={bot}
-                    stroke="#78350f"
-                    strokeWidth={0.2}
-                    strokeDasharray="0.5 0.4"
-                    opacity={0.5}
-                  />
-                  <text
-                    x={gardenL + 1}
-                    y={(top + bot) / 2}
-                    textAnchor="start"
-                    dominantBaseline="middle"
-                    fontSize={1.1}
-                    fill="#78350f"
-                  >
-                    {gate.name}
-                  </text>
-                </g>
-              );
-            }
-            return null;
-          })}
+            {/* Gates */}
+            {gates.map((gate) => {
+              const props = gate.properties as Record<
+                string,
+                unknown
+              > | null;
+              const edge = props?.edge;
+              if (edge === "bottom") {
+                return (
+                  <g key={gate.id}>
+                    <line
+                      x1={gate.x}
+                      y1={gardenH}
+                      x2={gate.x + gate.width}
+                      y2={gardenH}
+                      stroke="#78350f"
+                      strokeWidth={0.2}
+                      strokeDasharray="0.5 0.4"
+                      opacity={0.5}
+                    />
+                    <text
+                      x={gate.x + gate.width / 2}
+                      y={gardenH + 1.8}
+                      textAnchor="middle"
+                      fontSize={1.1}
+                      fill="#78350f"
+                    >
+                      {gate.name}
+                    </text>
+                  </g>
+                );
+              }
+              if (edge === "right") {
+                const top = toSvgY(gate.y + gate.height, gardenH);
+                const bot = toSvgY(gate.y, gardenH);
+                return (
+                  <g key={gate.id}>
+                    <line
+                      x1={gardenL}
+                      y1={top}
+                      x2={gardenL}
+                      y2={bot}
+                      stroke="#78350f"
+                      strokeWidth={0.2}
+                      strokeDasharray="0.5 0.4"
+                      opacity={0.5}
+                    />
+                    <text
+                      x={gardenL + 1}
+                      y={(top + bot) / 2}
+                      textAnchor="start"
+                      dominantBaseline="middle"
+                      fontSize={1.1}
+                      fill="#78350f"
+                    >
+                      {gate.name}
+                    </text>
+                  </g>
+                );
+              }
+              return null;
+            })}
 
-          {/* Fixtures */}
-          {fixtures.map((f) => {
-            if (f.feature_type === "greenhouse") {
+            {/* Fixtures */}
+            {fixtures.map((f) => {
+              if (f.feature_type === "greenhouse") {
+                const ry = toSvgY(f.y + f.height, gardenH);
+                return (
+                  <g key={f.id}>
+                    <rect
+                      x={f.x}
+                      y={ry}
+                      width={f.width}
+                      height={f.height}
+                      fill="#d4d4d8"
+                      fillOpacity={0.5}
+                      stroke="#71717a"
+                      strokeWidth={0.2}
+                    />
+                    <text
+                      x={f.x + f.width / 2}
+                      y={ry + f.height / 2}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fontSize={1.3}
+                      fill="#3f3f46"
+                      fontWeight="600"
+                    >
+                      {f.name}
+                    </text>
+                  </g>
+                );
+              }
               const ry = toSvgY(f.y + f.height, gardenH);
               return (
                 <g key={f.id}>
@@ -999,154 +922,232 @@ export function GardenDesigner({ garden, features }: Props) {
                     y={ry}
                     width={f.width}
                     height={f.height}
-                    fill="#d4d4d8"
+                    fill="#e5e7eb"
                     fillOpacity={0.5}
-                    stroke="#71717a"
-                    strokeWidth={0.2}
+                    stroke="#6b7280"
+                    strokeWidth={0.15}
                   />
                   <text
                     x={f.x + f.width / 2}
                     y={ry + f.height / 2}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fontSize={1.3}
-                    fill="#3f3f46"
-                    fontWeight="600"
+                    fontSize={1}
+                    fill="#374151"
                   >
                     {f.name}
                   </text>
                 </g>
               );
-            }
-            const ry = toSvgY(f.y + f.height, gardenH);
-            return (
-              <g key={f.id}>
-                <rect
-                  x={f.x}
-                  y={ry}
-                  width={f.width}
-                  height={f.height}
-                  fill="#e5e7eb"
-                  fillOpacity={0.5}
-                  stroke="#6b7280"
-                  strokeWidth={0.15}
-                />
-                <text
-                  x={f.x + f.width / 2}
-                  y={ry + f.height / 2}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize={1}
-                  fill="#374151"
-                >
-                  {f.name}
-                </text>
-              </g>
-            );
-          })}
+            })}
 
-          {/* User paths */}
-          {userFeatures
-            .filter((f) => f.feature_type === "path")
-            .map((f) => renderPath(f))}
+            {/* User paths */}
+            {userFeatures
+              .filter((f) => f.feature_type === "path")
+              .map((f) => renderPath(f))}
 
-          {/* User beds */}
-          {userFeatures
-            .filter((f) => f.feature_type === "bed")
-            .map((f) => renderBed(f))}
+            {/* User beds */}
+            {userFeatures
+              .filter((f) => f.feature_type === "bed")
+              .map((f) => renderBed(f))}
 
-          {/* Water spigots */}
-          {userFeatures
-            .filter((f) => f.feature_type === "water")
-            .map((f) => renderSpigot(f))}
+            {/* Water spigots */}
+            {userFeatures
+              .filter((f) => f.feature_type === "water")
+              .map((f) => renderSpigot(f))}
 
-          {/* Ghost bed preview */}
-          {ghostFeature && renderBed(ghostFeature, true)}
+            {/* Ghost bed preview */}
+            {ghostFeature && renderBed(ghostFeature, true)}
 
-          {/* Ghost spigot preview */}
-          {mode.type === "place-spigot" && ghostPos && renderSpigot(
-            {
-              id: "ghost-spigot",
-              garden_id: garden.id,
-              name: "",
-              feature_type: "water",
-              x: ghostPos.x,
-              y: gardenH - ghostPos.y,
-              width: 0.5,
-              height: 0.5,
-              rotation: 0,
-              points: null,
-              properties: {},
-              is_fixture: false,
-              notes: null,
-              created_at: "",
-            },
-            true
-          )}
-
-          {/* Path drawing preview */}
-          {pathPreviewPoints && pathPreviewPoints.length > 0 && (
-            <g>
-              <polyline
-                points={pathPreviewPoints
-                  .map((p) => `${p.x},${p.svgY}`)
-                  .join(" ")}
-                fill="none"
-                stroke={PATH_STROKE}
-                strokeWidth={
-                  mode.type === "draw-path" ? mode.width : 3
-                }
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity={0.5}
-                strokeDasharray="1 0.5"
-              />
-              {pathPreviewPoints.map((p, i) => (
-                <circle
-                  key={i}
-                  cx={p.x}
-                  cy={p.svgY}
-                  r={0.35}
-                  fill={PATH_STROKE}
-                  stroke="#b5a070"
-                  strokeWidth={0.08}
-                />
-              ))}
-            </g>
-          )}
-
-          {/* Orientation labels */}
-          <text
-            x={gardenL / 2}
-            y={-2}
-            textAnchor="middle"
-            fontSize={1.2}
-            fill="#a3a3a3"
-          >
-            N
-          </text>
-          <text
-            x={gardenL / 2}
-            y={gardenH + 3.5}
-            textAnchor="middle"
-            fontSize={1}
-            fill="#a3a3a3"
-          >
-            Outer Fence (South)
-          </text>
-        </svg>
-
-        {/* Mode indicator overlay */}
-        {mode.type !== "select" && (
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-background/90 backdrop-blur rounded-md border px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
-            {mode.type === "place-bed" &&
-              "Click to place bed. Press Esc to cancel."}
+            {/* Ghost spigot preview */}
             {mode.type === "place-spigot" &&
-              "Click to place spigot. Press Esc to cancel."}
-            {mode.type === "draw-path" &&
-              (mode.points.length === 0
-                ? "Click to start path. Press Esc to cancel."
-                : "Click to add points. Double-click to finish.")}
+              ghostPos &&
+              renderSpigot(
+                {
+                  id: "ghost-spigot",
+                  garden_id: garden.id,
+                  name: "",
+                  feature_type: "water",
+                  x: ghostPos.x,
+                  y: gardenH - ghostPos.y,
+                  width: 0.5,
+                  height: 0.5,
+                  rotation: 0,
+                  points: null,
+                  properties: {},
+                  is_fixture: false,
+                  notes: null,
+                  created_at: "",
+                },
+                true
+              )}
+
+            {/* Path drawing preview */}
+            {pathPreviewPoints && pathPreviewPoints.length > 0 && (
+              <g>
+                <polyline
+                  points={pathPreviewPoints
+                    .map((p) => `${p.x},${p.svgY}`)
+                    .join(" ")}
+                  fill="none"
+                  stroke={PATH_STROKE}
+                  strokeWidth={
+                    mode.type === "draw-path" ? mode.width : 3
+                  }
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={0.5}
+                  strokeDasharray="1 0.5"
+                />
+                {pathPreviewPoints.map((p, i) => (
+                  <circle
+                    key={i}
+                    cx={p.x}
+                    cy={p.svgY}
+                    r={0.35}
+                    fill={PATH_STROKE}
+                    stroke="#b5a070"
+                    strokeWidth={0.08}
+                  />
+                ))}
+              </g>
+            )}
+
+            {/* Orientation labels */}
+            <text
+              x={gardenL / 2}
+              y={-2}
+              textAnchor="middle"
+              fontSize={1.2}
+              fill="#a3a3a3"
+            >
+              N
+            </text>
+            <text
+              x={gardenL / 2}
+              y={gardenH + 3.5}
+              textAnchor="middle"
+              fontSize={1}
+              fill="#a3a3a3"
+            >
+              Outer Fence (South)
+            </text>
+          </svg>
+
+          {/* Mode indicator overlay */}
+          {isPlacing && (
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-background/90 backdrop-blur rounded-md border px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
+              {mode.type === "place-bed" &&
+                "Click to place bed. Press Esc to cancel."}
+              {mode.type === "place-spigot" &&
+                "Click to place spigot. Press Esc to cancel."}
+              {mode.type === "draw-path" &&
+                (mode.points.length === 0
+                  ? "Click to start path. Press Esc to cancel."
+                  : "Click to add points. Double-click to finish.")}
+            </div>
+          )}
+        </div>
+
+        {/* Side panel */}
+        {showPanel && selectedFeature && (
+          <div className="w-72 border-l bg-background flex flex-col overflow-y-auto">
+            <div className="flex items-center justify-between px-3 py-2 border-b">
+              <h3 className="text-sm font-semibold truncate">
+                {selectedFeature.name}
+              </h3>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => setSelectedId(null)}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <div className="p-3 space-y-4 text-sm">
+              {/* Feature info */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Type</span>
+                  <span className="capitalize">
+                    {selectedFeature.feature_type}
+                  </span>
+                </div>
+                {selectedFeature.feature_type === "bed" && (
+                  <>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Shape</span>
+                      <span className="capitalize">
+                        {(
+                          selectedFeature.properties as Record<
+                            string,
+                            unknown
+                          >
+                        )?.shape as string ?? "rectangle"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Size</span>
+                      <span>
+                        {selectedFeature.width}&prime; &times;{" "}
+                        {selectedFeature.height}&prime;
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Position</span>
+                      <span>
+                        ({selectedFeature.x.toFixed(0)},{" "}
+                        {selectedFeature.y.toFixed(0)})
+                      </span>
+                    </div>
+                  </>
+                )}
+                {selectedFeature.feature_type === "path" &&
+                  selectedFeature.points && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Width</span>
+                      <span>
+                        {(
+                          selectedFeature.properties as Record<
+                            string,
+                            unknown
+                          >
+                        )?.width as number ?? 3}
+                        &prime;
+                      </span>
+                    </div>
+                  )}
+                {selectedFeature.feature_type === "water" && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Position</span>
+                    <span>
+                      ({selectedFeature.x.toFixed(0)},{" "}
+                      {selectedFeature.y.toFixed(0)})
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Bed planting area (placeholder for Phase 3) */}
+              {selectedFeature.feature_type === "bed" && (
+                <div className="border rounded-md p-3 bg-muted/30">
+                  <p className="text-xs text-muted-foreground text-center">
+                    Plant placement coming soon
+                  </p>
+                </div>
+              )}
+
+              <Button
+                variant="destructive"
+                size="sm"
+                className="w-full"
+                onClick={() => handleDeleteFeature(selectedFeature.id)}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                Delete {selectedFeature.feature_type}
+              </Button>
+            </div>
           </div>
         )}
       </div>
