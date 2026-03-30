@@ -14,7 +14,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MousePointer2, Trash2, Pencil, Droplets, X } from "lucide-react";
+import {
+  MousePointer2,
+  Trash2,
+  Pencil,
+  Droplets,
+  X,
+  Copy,
+} from "lucide-react";
 import { BedConfigDialog, type BedConfig } from "./bed-config-dialog";
 
 // ---------------------------------------------------------------------------
@@ -133,6 +140,11 @@ export function GardenDesigner({ garden, features }: Props) {
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number;
+    y: number;
+    featureId: string;
+  } | null>(null);
 
   const dragRef = useRef({
     offsetX: 0,
@@ -153,10 +165,14 @@ export function GardenDesigner({ garden, features }: Props) {
   // Keyboard shortcuts
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
       if (e.key === "Escape") {
         setMode({ type: "select" });
         setSelectedId(null);
         setGhostPos(null);
+        setCtxMenu(null);
       }
       if (
         (e.key === "Delete" || e.key === "Backspace") &&
@@ -170,6 +186,14 @@ export function GardenDesigner({ garden, features }: Props) {
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, mode.type]);
+
+  // Close context menu on any click
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [ctxMenu]);
 
   // ---- Coordinate helpers ----
 
@@ -340,11 +364,49 @@ export function GardenDesigner({ garden, features }: Props) {
     await deleteGardenFeature(id);
   }
 
+  async function handleDuplicate(id: string) {
+    const source = localFeatures.find((f) => f.id === id);
+    if (!source || source.is_fixture) return;
+
+    const offset = gridSize * 2;
+    const tempId = `temp-${Date.now()}`;
+    const clone: GardenFeature = {
+      ...source,
+      id: tempId,
+      name: `${source.name} copy`,
+      x: source.x + offset,
+      created_at: new Date().toISOString(),
+    };
+
+    setLocalFeatures((prev) => [...prev, clone]);
+    setSelectedId(tempId);
+
+    const result = await createGardenFeature(garden.id, {
+      name: clone.name,
+      feature_type: clone.feature_type,
+      x: clone.x,
+      y: clone.y,
+      width: clone.width,
+      height: clone.height,
+      rotation: clone.rotation,
+      points: clone.points,
+      properties: (clone.properties as Record<string, unknown>) ?? {},
+    });
+
+    if (result.data) {
+      setLocalFeatures((prev) =>
+        prev.map((f) => (f.id === tempId ? { ...f, id: result.data!.id } : f))
+      );
+      setSelectedId(result.data.id);
+    }
+  }
+
   // ---- Mouse handlers ----
 
   const handleSvgMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (e.button !== 0) return;
+      setCtxMenu(null);
       const pos = mouseToSvg(e);
 
       if (mode.type === "place-bed") {
@@ -397,6 +459,17 @@ export function GardenDesigner({ garden, features }: Props) {
       };
     },
     [mode.type, mouseToSvg, gardenH]
+  );
+
+  const handleFeatureContextMenu = useCallback(
+    (e: React.MouseEvent, feature: GardenFeature) => {
+      if (feature.is_fixture) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setSelectedId(feature.id);
+      setCtxMenu({ x: e.clientX, y: e.clientY, featureId: feature.id });
+    },
+    []
   );
 
   const handleSvgMouseMove = useCallback(
@@ -518,6 +591,11 @@ export function GardenDesigner({ garden, features }: Props) {
               ? undefined
               : (e: React.MouseEvent) => handleFeatureMouseDown(e, f)
           }
+          onContextMenu={
+            isGhost
+              ? undefined
+              : (e: React.MouseEvent) => handleFeatureContextMenu(e, f)
+          }
           style={
             !isGhost && mode.type === "select"
               ? { cursor: "move" }
@@ -558,6 +636,11 @@ export function GardenDesigner({ garden, features }: Props) {
           isGhost
             ? undefined
             : (e: React.MouseEvent) => handleFeatureMouseDown(e, f)
+        }
+        onContextMenu={
+          isGhost
+            ? undefined
+            : (e: React.MouseEvent) => handleFeatureContextMenu(e, f)
         }
         style={
           !isGhost && mode.type === "select"
@@ -615,6 +698,9 @@ export function GardenDesigner({ garden, features }: Props) {
           e.stopPropagation();
           setSelectedId(f.id);
         }}
+        onContextMenu={(e: React.MouseEvent) =>
+          handleFeatureContextMenu(e, f)
+        }
         style={mode.type === "select" ? { cursor: "pointer" } : undefined}
       />
     );
@@ -631,6 +717,11 @@ export function GardenDesigner({ garden, features }: Props) {
           isGhost
             ? undefined
             : (e: React.MouseEvent) => handleFeatureMouseDown(e, f)
+        }
+        onContextMenu={
+          isGhost
+            ? undefined
+            : (e: React.MouseEvent) => handleFeatureContextMenu(e, f)
         }
         style={
           !isGhost && mode.type === "select"
@@ -1047,19 +1138,69 @@ export function GardenDesigner({ garden, features }: Props) {
                   : "Click to add points. Double-click to finish.")}
             </div>
           )}
+
+          {/* Right-click context menu */}
+          {ctxMenu && (
+            <div
+              className="fixed z-50 min-w-[140px] rounded-md border bg-popover p-1 shadow-md text-popover-foreground animate-in fade-in-0 zoom-in-95"
+              style={{ left: ctxMenu.x, top: ctxMenu.y }}
+            >
+              <button
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+                onClick={() => {
+                  handleDuplicate(ctxMenu.featureId);
+                  setCtxMenu(null);
+                }}
+              >
+                <Copy className="h-3.5 w-3.5" />
+                Duplicate
+              </button>
+              <button
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10"
+                onClick={() => {
+                  handleDeleteFeature(ctxMenu.featureId);
+                  setCtxMenu(null);
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Side panel */}
         {showPanel && selectedFeature && (
           <div className="w-72 border-l bg-background flex flex-col overflow-y-auto">
-            <div className="flex items-center justify-between px-3 py-2 border-b">
-              <h3 className="text-sm font-semibold truncate">
-                {selectedFeature.name}
-              </h3>
+            <div className="flex items-center gap-1.5 px-3 py-2 border-b">
+              <input
+                className="flex-1 min-w-0 bg-transparent text-sm font-semibold truncate border-b border-transparent hover:border-input focus:border-primary focus:outline-none px-0 py-0.5"
+                value={selectedFeature.name}
+                onChange={(e) => {
+                  const newName = e.target.value;
+                  setLocalFeatures((prev) =>
+                    prev.map((f) =>
+                      f.id === selectedFeature.id
+                        ? { ...f, name: newName }
+                        : f
+                    )
+                  );
+                }}
+                onBlur={() => {
+                  if (!selectedFeature.id.startsWith("temp-")) {
+                    updateGardenFeature(selectedFeature.id, {
+                      name: selectedFeature.name,
+                    });
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
+              />
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6"
+                className="h-6 w-6 shrink-0"
                 onClick={() => setSelectedId(null)}
               >
                 <X className="h-3.5 w-3.5" />
