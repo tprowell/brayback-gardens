@@ -172,7 +172,7 @@ export async function seedBarnGarden() {
       y: 0,
       width: 0.5,
       height: 0.5,
-      is_fixture: true,
+      is_fixture: false,
       properties: {},
     })),
   ];

@@ -21,6 +21,7 @@ import {
   MousePointer2,
   Trash2,
   Pencil,
+  Droplets,
 } from "lucide-react";
 import { BedConfigDialog, type BedConfig } from "./bed-config-dialog";
 
@@ -42,7 +43,8 @@ type ToolMode =
       depth: number;
       name: string;
     }
-  | { type: "draw-path"; width: number; points: { x: number; y: number }[] };
+  | { type: "draw-path"; width: number; points: { x: number; y: number }[] }
+  | { type: "place-spigot" };
 
 interface Segment {
   x1: number;
@@ -297,6 +299,55 @@ export function GardenDesigner({ garden, features }: Props) {
     }
   }
 
+  async function placeSpigot(svgX: number, svgY: number) {
+    const sx = snap(svgX, gridSize);
+    const sy = snap(svgY, gridSize);
+    const specX = sx;
+    const specY = gardenH - sy;
+
+    const count = localFeatures.filter(
+      (f) => f.feature_type === "water"
+    ).length;
+
+    const tempId = `temp-${Date.now()}`;
+    const feature: GardenFeature = {
+      id: tempId,
+      garden_id: garden.id,
+      name: `Spigot ${count + 1}`,
+      feature_type: "water",
+      x: specX,
+      y: specY,
+      width: 0.5,
+      height: 0.5,
+      rotation: 0,
+      points: null,
+      properties: {},
+      is_fixture: false,
+      notes: null,
+      created_at: new Date().toISOString(),
+    };
+
+    setLocalFeatures((prev) => [...prev, feature]);
+
+    const result = await createGardenFeature(garden.id, {
+      name: `Spigot ${count + 1}`,
+      feature_type: "water",
+      x: specX,
+      y: specY,
+      width: 0.5,
+      height: 0.5,
+      properties: {},
+    });
+
+    if (result.data) {
+      setLocalFeatures((prev) =>
+        prev.map((f) => (f.id === tempId ? { ...f, id: result.data!.id } : f))
+      );
+    } else {
+      setLocalFeatures((prev) => prev.filter((f) => f.id !== tempId));
+    }
+  }
+
   async function handleDeleteFeature(id: string) {
     if (id.startsWith("temp-")) return;
     setLocalFeatures((prev) => prev.filter((f) => f.id !== id));
@@ -313,6 +364,11 @@ export function GardenDesigner({ garden, features }: Props) {
 
       if (mode.type === "place-bed") {
         placeBed(pos.x, pos.y);
+        return;
+      }
+
+      if (mode.type === "place-spigot") {
+        placeSpigot(pos.x, pos.y);
         return;
       }
 
@@ -344,8 +400,11 @@ export function GardenDesigner({ garden, features }: Props) {
       setSelectedId(feature.id);
 
       const pos = mouseToSvg(e);
+      const isWater = feature.feature_type === "water";
       const fSvgX = feature.x;
-      const fSvgY = toSvgY(feature.y + feature.height, gardenH);
+      const fSvgY = isWater
+        ? toSvgY(feature.y, gardenH)
+        : toSvgY(feature.y + feature.height, gardenH);
 
       setIsDragging(true);
       dragRef.current = {
@@ -360,7 +419,7 @@ export function GardenDesigner({ garden, features }: Props) {
   const handleSvgMouseMove = useCallback(
     (e: React.MouseEvent) => {
       // Ghost preview for placement / path modes
-      if (mode.type === "place-bed" || mode.type === "draw-path") {
+      if (mode.type === "place-bed" || mode.type === "draw-path" || mode.type === "place-spigot") {
         const pos = mouseToSvg(e);
         setGhostPos({ x: snap(pos.x, gridSize), y: snap(pos.y, gridSize) });
         return;
@@ -376,7 +435,10 @@ export function GardenDesigner({ garden, features }: Props) {
           prev.map((f) => {
             if (f.id !== selectedId) return f;
             const specX = newSvgX;
-            const specY = gardenH - newSvgY - f.height;
+            const specY =
+              f.feature_type === "water"
+                ? gardenH - newSvgY
+                : gardenH - newSvgY - f.height;
             return { ...f, x: specX, y: specY };
           })
         );
@@ -513,7 +575,7 @@ export function GardenDesigner({ garden, features }: Props) {
   for (let y = 0; y <= gardenH; y += gridSize) hLines.push(y);
 
   const cursor =
-    mode.type === "place-bed" || mode.type === "draw-path"
+    mode.type === "place-bed" || mode.type === "draw-path" || mode.type === "place-spigot"
       ? "crosshair"
       : isPanning
         ? "grabbing"
@@ -637,6 +699,47 @@ export function GardenDesigner({ garden, features }: Props) {
     );
   }
 
+  function renderSpigot(f: GardenFeature, isGhost = false) {
+    const isSelected = f.id === selectedId && !isGhost;
+    const cy = toSvgY(f.y, gardenH);
+    const r = 0.7;
+    return (
+      <g
+        key={f.id}
+        onMouseDown={
+          isGhost
+            ? undefined
+            : (e: React.MouseEvent) => handleFeatureMouseDown(e, f)
+        }
+        style={!isGhost && mode.type === "select" ? { cursor: "move" } : undefined}
+      >
+        <circle
+          cx={f.x}
+          cy={cy}
+          r={r}
+          fill="#3b82f6"
+          fillOpacity={isGhost ? 0.35 : 0.6}
+          stroke={isSelected ? SELECTED_STROKE : "#1d4ed8"}
+          strokeWidth={isSelected ? 0.18 : 0.12}
+          strokeDasharray={isGhost ? "0.3 0.2" : undefined}
+        />
+        {!isGhost && (
+          <text
+            x={f.x}
+            y={cy}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={0.75}
+            fill="white"
+            fontWeight="bold"
+          >
+            W
+          </text>
+        )}
+      </g>
+    );
+  }
+
   // Ghost feature for placement preview
   const ghostFeature: GardenFeature | null =
     mode.type === "place-bed" && ghostPos
@@ -700,6 +803,19 @@ export function GardenDesigner({ garden, features }: Props) {
         </Button>
 
         <BedConfigDialog onPlace={handleBedConfig} />
+
+        <Button
+          variant={mode.type === "place-spigot" ? "secondary" : "outline"}
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => {
+            setMode({ type: "place-spigot" });
+            setSelectedId(null);
+          }}
+        >
+          <Droplets className="h-3.5 w-3.5 mr-1" />
+          Spigot
+        </Button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -902,33 +1018,6 @@ export function GardenDesigner({ garden, features }: Props) {
                 </g>
               );
             }
-            if (f.feature_type === "water") {
-              const cy = toSvgY(f.y, gardenH);
-              return (
-                <g key={f.id}>
-                  <circle
-                    cx={f.x}
-                    cy={cy}
-                    r={0.7}
-                    fill="#3b82f6"
-                    fillOpacity={0.6}
-                    stroke="#1d4ed8"
-                    strokeWidth={0.12}
-                  />
-                  <text
-                    x={f.x}
-                    y={cy}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fontSize={0.75}
-                    fill="white"
-                    fontWeight="bold"
-                  >
-                    W
-                  </text>
-                </g>
-              );
-            }
             const ry = toSvgY(f.y + f.height, gardenH);
             return (
               <g key={f.id}>
@@ -966,8 +1055,34 @@ export function GardenDesigner({ garden, features }: Props) {
             .filter((f) => f.feature_type === "bed")
             .map((f) => renderBed(f))}
 
+          {/* Water spigots */}
+          {userFeatures
+            .filter((f) => f.feature_type === "water")
+            .map((f) => renderSpigot(f))}
+
           {/* Ghost bed preview */}
           {ghostFeature && renderBed(ghostFeature, true)}
+
+          {/* Ghost spigot preview */}
+          {mode.type === "place-spigot" && ghostPos && renderSpigot(
+            {
+              id: "ghost-spigot",
+              garden_id: garden.id,
+              name: "",
+              feature_type: "water",
+              x: ghostPos.x,
+              y: gardenH - ghostPos.y,
+              width: 0.5,
+              height: 0.5,
+              rotation: 0,
+              points: null,
+              properties: {},
+              is_fixture: false,
+              notes: null,
+              created_at: "",
+            },
+            true
+          )}
 
           {/* Path drawing preview */}
           {pathPreviewPoints && pathPreviewPoints.length > 0 && (
@@ -1026,6 +1141,8 @@ export function GardenDesigner({ garden, features }: Props) {
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-background/90 backdrop-blur rounded-md border px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
             {mode.type === "place-bed" &&
               "Click to place bed. Press Esc to cancel."}
+            {mode.type === "place-spigot" &&
+              "Click to place spigot. Press Esc to cancel."}
             {mode.type === "draw-path" &&
               (mode.points.length === 0
                 ? "Click to start path. Press Esc to cancel."
